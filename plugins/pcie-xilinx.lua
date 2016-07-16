@@ -33,13 +33,13 @@ f.tcap_ts   = ProtoField.new("Timestamp", "pcie.tcap.timestamp", ftypes.BYTES)
 -- Completer Request (CQ) Descriptor Format for Memory, I/O, and Atomic Op Requests
 -- |       0       |       1       |       2       |       3       |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |R|Attr | TC  |BARAperture|BARID|Target Function|      Tag      |
+-- |                       Address [63:32]                         | DW+1
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |          Requester ID         |R|ReqType|     Dword count     |
+-- |                       Address [31:2]                      |AT | DW+0
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |                       Address [63:32]                         |
+-- |R|Attr | TC  |BARAperture|BARID|Target Function|      Tag      | DW+3
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |                       Address [31:2]                      |AT |
+-- |          Requester ID         |R|ReqType|     Dword count     | DW+2
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 -- R: Reserved
 -- AT: Address Type
@@ -47,11 +47,11 @@ f.tcap_ts   = ProtoField.new("Timestamp", "pcie.tcap.timestamp", ftypes.BYTES)
 -- Completer Completion (CC) Descriptor Format
 -- |       0       |       1       |       2       |       3       |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |F|Attr | TC  |C|          Completer ID         |      Tag      |
--- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 -- |          Requester ID         |R|P| CS  |     Dword count     |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 -- | R |L|      Byte Count         | Reserved  |AT |R|Address[6:0] |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- |F|Attr | TC  |C|          Completer ID         |      Tag      |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 -- F: Force ECRC
 -- C: Completer ID Enable
@@ -63,13 +63,13 @@ f.tcap_ts   = ProtoField.new("Timestamp", "pcie.tcap.timestamp", ftypes.BYTES)
 -- Requester Request (RQ) Descriptor Format for Memory, I/O, and Atomic Op Requests
 -- |       0       |       1       |       2       |       3       |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |F|Attr | TC  |E|          Completer ID         |      Tag      |
--- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |          Requester ID         |P|ReqType|     Dword count     |
--- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 -- |                       Address [63:32]                         |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 -- |                       Address [31:2]                      |AT |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- |F|Attr | TC  |E|          Completer ID         |      Tag      |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- |          Requester ID         |P|ReqType|     Dword count     |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 -- F: Force ECRC
 -- E: Requester ID Enable
@@ -79,11 +79,11 @@ f.tcap_ts   = ProtoField.new("Timestamp", "pcie.tcap.timestamp", ftypes.BYTES)
 -- Requester Completion (RC) Descriptor Format
 -- |       0       |       1       |       2       |       3       |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |R|Attr | TC  |R|          Completer ID         |      Tag      |
--- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 -- |          Requester ID         |R|P| CS  |     Dword count     |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 -- |R|Q|L|      Byte Count         | Reservd |    Address[11:0]    |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- |R|Attr | TC  |R|          Completer ID         |      Tag      |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 -- R: Reserved
 -- P: Poisoned Completion
