@@ -1,12 +1,12 @@
-local pcie_proto = Proto("PCIe", "PCI Express Transport Layer Packet")
+local pcie_proto = Proto("PCIe", "PCI Express Transport Layer Packet (Xilinx vender format)")
 
 local f = pcie_proto.fields
 
 -- PCIe TLP capture header: Byte 6
 --  2               1             0B
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- | Ver |Dir|Rsrvd|               |
--- +-+-+-+-+-+-+-+-+               |
+-- |   Sequence        |DIR|  TS   |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+       |
 -- |           Timestamp           |
 -- |                               |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -16,7 +16,7 @@ local f = pcie_proto.fields
 -- Reserved:3bit, default:0
 -- Timestamp:40bit, default:0, Clock_source:PCIe_clock(4ns)
 -- 
-f.tcap_ver  = ProtoField.new("Version", "pcie.tcap.version", ftypes.UINT8, nil, base.DEC)
+f.tcap_ver = ProtoField.new("Version", "pcie.tcap.version", ftypes.UINT8, nil, base.DEC)
 --f.tcap_dir  = ProtoField.new("Packet Direction", "pcie.tcap.direction", ftypes.UINT8, nil, base.HEX)
 local TCAPPacketDirection = {
 	[0] = "RX_ENGINE: Completer reQuest (CQ)",
@@ -28,40 +28,76 @@ f.tcap_dir  = ProtoField.uint8("pcie.tcap.direction", "Packet Direction", base.D
 f.tcap_rsvd = ProtoField.new("Reserved", "pcie.tcap.reserved", ftypes.UINT8, nil, base.NONE)
 f.tcap_ts   = ProtoField.new("Timestamp", "pcie.tcap.timestamp", ftypes.BYTES)
 
--- PCI Express TLP Completion Header:
+-- From Xilinx PG023
+--
+-- Completer Request (CQ) Descriptor Format for Memory, I/O, and Atomic Op Requests
 -- |       0       |       1       |       2       |       3       |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |R|FMT|   Type  |R| TC  |   R   |T|E|Atr| R |       Length      |
+-- |R|Attr | TC  |BARAperture|BARID|Target Function|      Tag      |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |          Completer ID         |CpSts|B|      ByteCount        |
+-- |          Requester ID         |R|ReqType|     Dword count     |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |          Requester ID         |      Tag      |R|Lower Address|
+-- |                       Address [63:32]                         |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
---
+-- |                       Address [31:2]                      |AT |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- R: Reserved
+-- AT: Address Type
 
--- PCI Express TLP 4DW Header:
+-- Completer Completion (CC) Descriptor Format
 -- |       0       |       1       |       2       |       3       |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |R|FMT|   Type  |R| TC  |   R   |T|E|Atr| R |       Length      |
+-- |F|Attr | TC  |C|          Completer ID         |      Tag      |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |           Request ID          |      Tag      |LastBE |FirstBE|
+-- |          Requester ID         |R|P| CS  |     Dword count     |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |                        Address[63:32]                         |
+-- | R |L|      Byte Count         | Reserved  |AT |R|Address[6:0] |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |                        Address[31:2]                      | R |
--- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
---
+-- F: Force ECRC
+-- C: Completer ID Enable
+-- R: Reserved
+-- P: Poisoned Completion
+-- CS: Completion Status
+-- L: Locked Read Completion
 
--- PCI Express TLP 3DW Header:
+-- Requester Request (RQ) Descriptor Format for Memory, I/O, and Atomic Op Requests
 -- |       0       |       1       |       2       |       3       |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |R|FMT|   Type  |R| TC  |   R   |T|E|Atr| R |       Length      |
+-- |F|Attr | TC  |E|          Completer ID         |      Tag      |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |           Request ID          |      Tag      |LastBE |FirstBE|
+-- |          Requester ID         |P|ReqType|     Dword count     |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |                           Address                         | R |
+-- |                       Address [63:32]                         |
 -- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
---
+-- |                       Address [31:2]                      |AT |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- F: Force ECRC
+-- E: Requester ID Enable
+-- P: Poisoned Request
+-- AT: Address Type
+
+-- Requester Completion (RC) Descriptor Format
+-- |       0       |       1       |       2       |       3       |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- |R|Attr | TC  |R|          Completer ID         |      Tag      |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- |          Requester ID         |R|P| CS  |     Dword count     |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- |R|Q|L|      Byte Count         | Reservd |    Address[11:0]    |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- R: Reserved
+-- P: Poisoned Completion
+-- CS: Completion Status
+-- Q: Request Completed
+-- L: Locked Read Completion
+
+-- Requester ID and Completer ID
+-- |       0       |       1       |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- |Device/Function|      Tag      |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+
 f.tlp_rsvd0   = ProtoField.new("Reserved0", "pcie.tlp.reserved0", ftypes.UINT8, nil, base.NONE)
 -- f.tlp_fmt     = ProtoField.new("Packet Format", "pcie.tlp.format", ftypes.UINT8, nil, base.HEX)
 local TLPPacketFormat = {
@@ -96,7 +132,7 @@ f.tlp_addr    = ProtoField.new("Address", "pcie.tlp.addr", ftypes.UINT8, nil, ba
 f.tlp_rsvd4   = ProtoField.new("Reserved4", "pcie.tlp.reserved4", ftypes.UINT8, nil, base.NONE)
 
 function pcie_proto.dissector(buffer, pinfo, tree)
-	pinfo.cols.protocol = "PCIe TLP"
+	pinfo.cols.protocol = "PCIe TLP (Xilinx)"
 	local subtree = tree:add(pcie_proto, buffer(0, buffer:len()))
 
 	local tcap_subtree = subtree:add(buffer(0,6), "TLP Capture Header")
