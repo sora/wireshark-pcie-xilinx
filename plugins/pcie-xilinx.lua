@@ -15,10 +15,10 @@ local f = pcie_proto.fields
 -- Sequence, 32bit
 --
 local TCAPPacketDirection = {
-	[0] = "CQ: Completer reQuest [RX_ENGINE]",
-	[1] = "CC: Completer Completion [TX_ENGINE]",
-	[2] = "RQ: Requester reQuest [TX_ENGINE]",
-	[3] = "RC: Requester Completion [RX_ENGINE]",
+	[0] = "CQ: Completer reQuest",
+	[1] = "CC: Completer Completion",
+	[2] = "RQ: Requester reQuest",
+	[3] = "RC: Requester Completion",
 }
 f.tcap_dir  = ProtoField.uint8("pcie.tcap.direction", "Packet Direction", base.BYTES, TCAPPacketDirection)
 -- f.tcap_rsvd = ProtoField.new("Reserved", "pcie.tcap.reserved", ftypes.BYTES)
@@ -87,8 +87,43 @@ local CQ_RequestType = {
 	[8] = "Type 0 Configuration Read Request (on Requester side only)",
 }
 f.cq_reqtype = ProtoField.uint8("pcie.cq.reqtype", "Request Type", base.BYTES, CQ_RequestType)
-f.cq_dwlen   = ProtoField.new("Dword Count", "pcie.cq.dwlen", ftypes.UINT16, nil, base.DEC)
+f.cq_dwcount = ProtoField.new("Dword Count", "pcie.cq.dwcount", ftypes.UINT16, nil, base.DEC)
 f.cq_data    = ProtoField.new("Data Payload", "pcie.cq.data", ftypes.UINT64, nil, base.HEX)
+
+-- CC: Completer Completion Descriptor Format
+-- |       0       |       1       |       2       |       3       |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- |          Requester ID         |R|P| CS  |     Dword count     |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- | R |L|      Byte Count         | Reserved  |AT |R|Address[6:0] |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- |F|Attr | TC  |C|          Completer ID         |      Tag      |
+-- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+-- F: Force ECRC
+-- C: Completer ID Enable
+-- R: Reserved
+-- P: Poisoned Completion
+-- CS: Completion Status
+-- L: Locked Read Completion
+--
+f.cc_reqid   = ProtoField.new("Requester ID", "pcie.cc.reqid", ftypes.UINT16, nil, base.HEX)
+f.cc_rsvd0   = ProtoField.new("Reserved 0", "pcie.cc.rsvd0", ftypes.UINT8, nil, base.NONE)
+f.cc_pc      = ProtoField.new("Poisoned Completion", "pcie.cc.pc", ftypes.UINT8, nil, base.HEX)
+f.cc_cs      = ProtoField.new("Completion Status", "pcie.cc.cs", ftypes.UINT8, nil, base.HEX)
+f.cc_dwcount = ProtoField.new("Dword Count", "pcie.cc.dwcount", ftypes.UINT16, nil, base.DEC)
+f.cc_rsvd1   = ProtoField.new("Reserved 1", "pcie.cc.rsvd1", ftypes.UINT8, nil, base.NONE)
+f.cc_lrc     = ProtoField.new("Locked Read Completion", "pcie.cc.lrc", ftypes.UINT8, nil, base.HEX)
+f.cc_bcount  = ProtoField.new("Byte Count", "pcie.cc.bcount", ftypes.UINT16, nil, base.DEC)
+f.cc_rsvd2   = ProtoField.new("Reserved 2", "pcie.cc.rsvd2", ftypes.UINT8, nil, base.NONE)
+f.cc_at      = ProtoField.new("Address Type", "pcie.cc.at", ftypes.UINT8, nil, base.HEX)
+f.cc_rsvd3   = ProtoField.new("Reserved 3", "pcie.cc.rsvd3", ftypes.UINT8, nil, base.NONE)
+f.cc_addr    = ProtoField.new("Lower Address", "pcie.cc.addr", ftypes.UINT8, nil, base.HEX)
+f.cc_fcrc    = ProtoField.new("Force ECRC", "pcie.cc.fcrc", ftypes.UINT8, nil, base.HEX)
+f.cc_attr    = ProtoField.new("Attributes", "pcie.cc.attr", ftypes.UINT8, nil, base.HEX)
+f.cc_tc      = ProtoField.new("Transaction Class (TC)", "pcie.cc.tc", ftypes.UINT8, nil, base.HEX)
+f.cc_cide    = ProtoField.new("Completer ID Enable", "pcie.cc.cide", ftypes.UINT8, nil, base.HEX)
+f.cc_compid  = ProtoField.new("Completer ID", "pcie.cc.compid", ftypes.UINT16, nil, base.HEX)
+f.cc_tag     = ProtoField.new("Tag", "pcie.cc.tag", ftypes.UINT8, nil, base.HEX)
 
 -- Unknown TLP packet
 -- f.unk_pkt = ProtoField.new("Unknown TLP Packet", "pcie.unk", ftypes.UINT64, nil, base.HEX)
@@ -119,31 +154,32 @@ function pcie_proto.dissector(buffer, pinfo, tree)
 		cq_subtree:add(f.cq_reqid,   buffer(18,2))
 	--	cq_subtree:add(f.cq_rsvd1,   buffer(20,1), buffer(20,1):bitfield(0, 1))
 		cq_subtree:add(f.cq_reqtype, buffer(20,1), buffer(20,1):bitfield(1, 4))
-		cq_subtree:add(f.cq_dwlen,   buffer(20,2), buffer(20,2):bitfield(5,11))
+		cq_subtree:add(f.cq_dwcount,   buffer(20,2), buffer(20,2):bitfield(5,11))
 
 		local cqdata_subtree = subtree:add(buffer(22, buffer:len()-22), "TLP data")
 		cqdata_subtree:add(f.cq_data, buffer(22,buffer:len()-22))
+
+	elseif (tcapdir == 1) then
+		local cc_subtree = subtree:add(buffer(6, buffer:len()-6), "TLP Header (CC)")
+		cc_subtree:add(f.cc_reqid,   buffer( 6,2))
+		cc_subtree:add(f.cc_pc,      buffer( 8,1), buffer( 8,1):bitfield(1, 1))
+		cc_subtree:add(f.cc_cs,      buffer( 8,1), buffer( 8,1):bitfield(2, 3))
+		cc_subtree:add(f.cc_dwcount, buffer( 8,2), buffer( 8,2):bitfield(5,11))
+		cc_subtree:add(f.cc_lrc,     buffer(10,1), buffer(10,1):bitfield(2, 1))
+		cc_subtree:add(f.cc_bcount,  buffer(10,2), buffer(10,2):bitfield(3,13))
+		cc_subtree:add(f.cc_at,      buffer(12,1), buffer(12,1):bitfield(6, 2))
+		cc_subtree:add(f.cc_addr,    buffer(13,1), buffer(13,1):bitfield(1, 7))
+		cc_subtree:add(f.cc_fcrc,    buffer(14,1), buffer(14,1):bitfield(0, 1))
+		cc_subtree:add(f.cc_attr,    buffer(14,1), buffer(14,1):bitfield(1, 3))
+		cc_subtree:add(f.cc_tc,      buffer(14,1), buffer(14,1):bitfield(4, 3))
+		cc_subtree:add(f.cc_cide,    buffer(14,1), buffer(14,1):bitfield(7, 1))
+		cc_subtree:add(f.cc_compid,  buffer(15,2))
+		cc_subtree:add(f.cc_tag,     buffer(17,1))
 
 	else
 		local unk_subtree = subtree:add(buffer(6, buffer:len()-6), "TLP Packet (unknown)")
 	end
 end
-
--- CC: Completer Completion Descriptor Format
--- |       0       |       1       |       2       |       3       |
--- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |          Requester ID         |R|P| CS  |     Dword count     |
--- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- | R |L|      Byte Count         | Reserved  |AT |R|Address[6:0] |
--- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- |F|Attr | TC  |C|          Completer ID         |      Tag      |
--- +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
--- F: Force ECRC
--- C: Completer ID Enable
--- R: Reserved
--- P: Poisoned Completion
--- CS: Completion Status
--- L: Locked Read Completion
 
 -- RQ: Requester Request Descriptor Format for Memory, I/O, and Atomic Op Requests
 -- |       0       |       1       |       2       |       3       |
