@@ -15,10 +15,10 @@ local f = pcie_proto.fields
 -- Sequence, 32bit
 --
 local TCAPPacketDirection = {
-	[0] = "CQ: Completer reQuest (RX_ENGINE)",
-	[1] = "CC: Completer Completion (TX_ENGINE)",
-	[2] = "RQ: Requester reQuest (TX_ENGINE)",
-	[3] = "RC: Requester Completion (RX_ENGINE)",
+	[0] = "CQ: Completer reQuest [RX_ENGINE]",
+	[1] = "CC: Completer Completion [TX_ENGINE]",
+	[2] = "RQ: Requester reQuest [TX_ENGINE]",
+	[3] = "RC: Requester Completion [RX_ENGINE]",
 }
 f.tcap_dir  = ProtoField.uint8("pcie.tcap.direction", "Packet Direction", base.BYTES, TCAPPacketDirection)
 -- f.tcap_rsvd = ProtoField.new("Reserved", "pcie.tcap.reserved", ftypes.BYTES)
@@ -88,10 +88,14 @@ local CQ_RequestType = {
 }
 f.cq_reqtype = ProtoField.uint8("pcie.cq.reqtype", "Request Type", base.BYTES, CQ_RequestType)
 f.cq_dwlen   = ProtoField.new("Dword Count", "pcie.cq.dwlen", ftypes.UINT16, nil, base.DEC)
-f.cq_data    = ProtoField.new("Data", "pcie.cq.data", ftypes.UINT64, nil, base.HEX)
+f.cq_data    = ProtoField.new("Data Payload", "pcie.cq.data", ftypes.UINT64, nil, base.HEX)
+
+-- Unknown TLP packet
+-- f.unk_pkt = ProtoField.new("Unknown TLP Packet", "pcie.unk", ftypes.UINT64, nil, base.HEX)
 
 function pcie_proto.dissector(buffer, pinfo, tree)
 	pinfo.cols.protocol = "PCIe TLP (Xilinx)"
+
 	local subtree = tree:add(pcie_proto, buffer(0, buffer:len()))
 
 	local tcap_subtree = subtree:add(buffer(0,6), "TLP Capture Header")
@@ -99,23 +103,30 @@ function pcie_proto.dissector(buffer, pinfo, tree)
 --	tcap_subtree:add(f.tcap_rsvd, buffer(0,2), buffer(0,2):bitfield(2,14))
 	tcap_subtree:add(f.tcap_sec,  buffer(2,4))
 
-	local cq_subtree = subtree:add(buffer(6, buffer:len()-6), "Transaction Layer Packet (CQ)")
-	cq_subtree:add(f.cq_addr,    buffer( 6,8))
-	cq_subtree:add(f.cq_at,      buffer(13,1), buffer(13,1):bitfield(6, 2))
---	cq_subtree:add(f.cq_rsvd0,   buffer(14,1), buffer(14,1):bitfield(0, 1))
-	cq_subtree:add(f.cq_attr,    buffer(14,1), buffer(14,1):bitfield(1, 3))
-	cq_subtree:add(f.cq_tc,      buffer(14,1), buffer(14,1):bitfield(4, 3))
-	cq_subtree:add(f.cq_barap,   buffer(14,2), buffer(14,2):bitfield(7, 6))
-	cq_subtree:add(f.cq_barid,   buffer(15,1), buffer(15,1):bitfield(5, 3))
-	cq_subtree:add(f.cq_tf,      buffer(16,1))
-	cq_subtree:add(f.cq_tag,     buffer(17,1))
-	cq_subtree:add(f.cq_reqid,   buffer(18,2))
---	cq_subtree:add(f.cq_rsvd1,   buffer(20,1), buffer(20,1):bitfield(0, 1))
-	cq_subtree:add(f.cq_reqtype, buffer(20,1), buffer(20,1):bitfield(1, 4))
-	cq_subtree:add(f.cq_dwlen,   buffer(20,2), buffer(20,2):bitfield(5,11))
+	local tcapdir = buffer(0,1):bitfield(0,2)
 
-	local cqdata_subtree = subtree:add(buffer(22, buffer:len()-22), "TLP data")
-	cqdata_subtree:add(f.cq_data, buffer(22,buffer:len()-22))
+	if (tcapdir == 0) then
+		local cq_subtree = subtree:add(buffer(6, buffer:len()-6), "TLP Header (CQ)")
+		cq_subtree:add(f.cq_addr,    buffer( 6,8))
+		cq_subtree:add(f.cq_at,      buffer(13,1), buffer(13,1):bitfield(6, 2))
+	--	cq_subtree:add(f.cq_rsvd0,   buffer(14,1), buffer(14,1):bitfield(0, 1))
+		cq_subtree:add(f.cq_attr,    buffer(14,1), buffer(14,1):bitfield(1, 3))
+		cq_subtree:add(f.cq_tc,      buffer(14,1), buffer(14,1):bitfield(4, 3))
+		cq_subtree:add(f.cq_barap,   buffer(14,2), buffer(14,2):bitfield(7, 6))
+		cq_subtree:add(f.cq_barid,   buffer(15,1), buffer(15,1):bitfield(5, 3))
+		cq_subtree:add(f.cq_tf,      buffer(16,1))
+		cq_subtree:add(f.cq_tag,     buffer(17,1))
+		cq_subtree:add(f.cq_reqid,   buffer(18,2))
+	--	cq_subtree:add(f.cq_rsvd1,   buffer(20,1), buffer(20,1):bitfield(0, 1))
+		cq_subtree:add(f.cq_reqtype, buffer(20,1), buffer(20,1):bitfield(1, 4))
+		cq_subtree:add(f.cq_dwlen,   buffer(20,2), buffer(20,2):bitfield(5,11))
+
+		local cqdata_subtree = subtree:add(buffer(22, buffer:len()-22), "TLP data")
+		cqdata_subtree:add(f.cq_data, buffer(22,buffer:len()-22))
+
+	else
+		local unk_subtree = subtree:add(buffer(6, buffer:len()-6), "TLP Packet (unknown)")
+	end
 end
 
 -- CC: Completer Completion Descriptor Format
